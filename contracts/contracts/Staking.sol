@@ -1,6 +1,6 @@
 pragma solidity ^0.8.0;
 
-import "../node_modules/@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./ERC20/IERC20.sol";
 
 contract Staking {
   address public owner;
