@@ -71,78 +71,111 @@ contract Staking {
     currentTokenId += 1;
   }
 
-  function getTokenSymbols() public view returns(string[] memory) {
-    return tokenSymbols;
-  }
+  function transferOwnership(address newOwner) public  {
+        if (newOwner != address(0)) {
+            owner = newOwner;
+        }
+    }
+    //stake tokens function
 
-  function getToken(string calldata tokenSymbol) public view returns(Token memory) {
-    return tokens[tokenSymbol];
-  }
+    function stakeTokens(uint256 _amount) public {
+        //must be more than 0
+        require(_amount > 0, "amount cannot be 0");
 
-  function stakeTokens(string calldata symbol, uint tokenQuantity) external {
-    require(tokens[symbol].tokenId != 0, "This token cannot be staked");
+       
 
-    IERC20(tokens[symbol].tokenAddress).transferFrom(msg.sender, address(this), tokenQuantity);
+        //User adding test tokens
+        rISINGBIRD.transferFrom(msg.sender, address(this), _amount);
+        totalStaked = totalStaked + _amount;
 
-    positions[currentPositionId] = Position(
-      currentPositionId,
-      msg.sender,
-      tokens[symbol].name,
-      symbol,
-      block.timestamp,
-      tokens[symbol].apy,
-      tokenQuantity,
-      tokens[symbol].usdPrice * tokenQuantity,
-      (tokens[symbol].usdPrice * tokenQuantity) / ethUsdPrice,
-      true
-    );
+        //updating staking balance for user by mapping
+        stakingBalance[msg.sender] = stakingBalance[msg.sender] + _amount;
+        staking_start_time[msg.sender] = block.timestamp;
 
-    positionIdsByAddress[msg.sender].push(currentPositionId);
-    currentPositionId += 1;
-    stakedTokens[symbol] += tokenQuantity;
-  }
 
-  function getPositionIdsForAddress() external view returns(uint[] memory) {
-    return positionIdsByAddress[msg.sender];
-  }
+        //checking if user staked before or not, if NOT staked adding to array of stakers
+        if (!hasStaked[msg.sender]) {
+            stakers.push(msg.sender);
+        }
 
-  function getPositionById(uint positionId) external view returns(Position memory) {
-    return positions[positionId];
-  }
+        //updating staking status
+        
+        hasStaked[msg.sender] = true;
+        isStakingAtm[msg.sender] = true;
+    }
 
-  function calculateInterest(uint apy, uint value, uint numberDays) public pure returns(uint) {
-    return apy * value * numberDays / 10000 / 365;
-  }
+    //unstake tokens function
 
-  function closePosition(uint positionId) external {
-    require(positions[positionId].walletAddress == msg.sender, "Not the owner of this position");
-    require(positions[positionId].open == true, 'Position already closed');
+    function unstakeTokens() public {
+        //get staking balance for user
 
-    positions[positionId].open = false;
+        uint256 balance = stakingBalance[msg.sender];
 
-    IERC20(tokens[positions[positionId].symbol].tokenAddress).transfer(msg.sender, positions[positionId].tokenQuantity);
+        //amount should be more than 0
+        require(balance > 0, "amount has to be more than 0");
 
-    uint numberDays = calculateNumberDays(positions[positionId].createdDate);
+        //transfer staked tokens back to user
+        rISINGBIRD.transfer(msg.sender, balance);
+        totalStaked = totalStaked - balance;
 
-    uint weiAmount = calculateInterest(
-      positions[positionId].apy,
-      positions[positionId].ethValue,
-      numberDays
-    );
+        //reseting users staking balance
+        stakingBalance[msg.sender] = 0;
 
-    payable(msg.sender).call{value: weiAmount}("");
-  }
+        //updating staking status
+        isStakingAtm[msg.sender] = false;
+    }
 
-  function calculateNumberDays(uint createdDate) public view returns(uint) {
-    return (block.timestamp - createdDate) / 60 / 60 / 24;
-  }
+    // different APY Pool
+    function customStaking(uint256 _amount) public {
+        require(_amount > 0, "amount cannot be 0");
+        rISINGBIRD.transferFrom(msg.sender, address(this), _amount);
+        customTotalStaked = customTotalStaked + _amount;
+        customStakingBalance[msg.sender] =
+            customStakingBalance[msg.sender] +
+            _amount;
 
-  function modifyCreatedDate(uint positionId, uint newCreatedDate) external onlyOwner {
-    positions[positionId].createdDate = newCreatedDate;
-  }
+        if (!customHasStaked[msg.sender]) {
+            customStakers.push(msg.sender);
+        }
+        customHasStaked[msg.sender] = true;
+        customIsStakingAtm[msg.sender] = true;
+    }
 
-  modifier onlyOwner {
-    require(owner == msg.sender, "Only owner may call this function");
-    _;
-  }
+    function customUnstake() public {
+        uint256 balance = customStakingBalance[msg.sender];
+        require(balance > 0, "amount has to be more than 0");
+        rISINGBIRD.transfer(msg.sender, balance);
+        customTotalStaked = customTotalStaked - balance;
+        customStakingBalance[msg.sender] = 0;
+        customIsStakingAtm[msg.sender] = false;
+    }
+
+    //airdropp tokens
+    function redistributeRewards() public {
+
+         require(block.timestamp >=  staking_start_time[msg.sender] + 2678400 , " you can not  get reward before 30 days");
+       
+            uint256 balance = stakingBalance[msg.sender] * 5 /100; 
+            balance = stakingBalance[msg.sender] + balance;
+            
+
+            if (balance > 0) {
+                rISINGBIRD.transfer(msg.sender, balance);
+            
+            }
+        
+    }
+
+   
+    //change APY value for custom staking
+    function changeAPY(uint256 _value) public {
+        //only owner can issue airdrop
+        require(msg.sender == owner, "Only contract creator can change APY");
+        require(
+            _value > 0,
+            "APY value has to be more than 0, try 100 for (0.166% daily) instead"
+        );
+        customAPY = _value;
+    }
+
 }
